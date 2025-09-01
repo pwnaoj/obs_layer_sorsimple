@@ -46,7 +46,7 @@ class EntityRepository(BaseRepository):
             date_str = datetime.now().strftime('%Y%m%d')
             
         try:
-            query = "SELECT data FROM {} WHERE session_id = %s AND date = %s".format(entity_name)
+            query = ""
             result = self.db_service.get_events(
                 sql=query,
                 params=(session_id, date_str)
@@ -61,12 +61,13 @@ class EntityRepository(BaseRepository):
                 date=date_str
             )
     
-    def find_tidnid(self, session_id: str, date_str: Optional[str] = None) -> Optional[str]:
+    def find_tidnid(self, session_id: str, querys: Dict, date_str: Optional[str] = None) -> Optional[str]:
         """
         Busca el tidnid asociado a una sesión.
         
         Args:
             session_id: ID de sesión
+            querys: Querys para consultas
             date_str: Fecha en formato YYYYMMDD (por defecto, hoy)
             
         Returns:
@@ -75,14 +76,17 @@ class EntityRepository(BaseRepository):
         Raises:
             RepositoryError: Si ocurre un error en la operación
         """
+        if querys.get('find_tidnid') is None:
+            raise ValueError("No hay querys configurados para consultar tidnid en DB.")
+        
         if date_str is None:
             date_str = datetime.now().strftime('%Y%m%d')
             
         try:
-            query = "SELECT tidnid FROM session_mapping WHERE session_id = %s AND date = %s"
+            query = querys.get('find_tidnid')
             result = self.db_service.get_events(
                 sql=query,
-                params=(session_id, date_str)
+                params=(date_str, session_id)
             )
             
             return result[0] if result and len(result) > 0 else None
@@ -94,7 +98,7 @@ class EntityRepository(BaseRepository):
             )
     
     def save(self, entity_name: str, session_id: str, tidnid: str, 
-             data: Union[Dict, List], date_str: Optional[str] = None) -> bool:
+             data: Union[Dict, List], querys: Dict, date_str: Optional[str] = None) -> bool:
         """
         Guarda los datos de una entidad.
         
@@ -103,6 +107,7 @@ class EntityRepository(BaseRepository):
             session_id: ID de sesión
             tidnid: Identificador del tipo y número de documento
             data: Datos a guardar (serán convertidos a JSON)
+            querys: Querys para consultas
             date_str: Fecha en formato YYYYMMDD (por defecto, hoy)
             
         Returns:
@@ -111,6 +116,9 @@ class EntityRepository(BaseRepository):
         Raises:
             RepositoryError: Si ocurre un error en la operación
         """
+        if querys.get('save') is None:
+            raise ValueError("No hay querys configurados para insertar data a DB.")
+        
         if date_str is None:
             date_str = datetime.now().strftime('%Y%m%d')
             
@@ -119,17 +127,12 @@ class EntityRepository(BaseRepository):
             data_json = json.dumps(data, default=str)
             
             # Construir consulta
-            query = """
-                INSERT INTO {} (session_id, tidnid, data, date) 
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (session_id, date) 
-                DO UPDATE SET data = %s, tidnid = %s
-            """.format(entity_name)
+            query = querys.get('save').format(entity_name=entity_name)
             
             # Ejecutar consulta
             self.db_service.save_events(
                 sql=query,
-                params=(session_id, tidnid, data_json, date_str, data_json, tidnid)
+                params=(session_id, tidnid, data_json, date_str)
             )
             
             logger.info(

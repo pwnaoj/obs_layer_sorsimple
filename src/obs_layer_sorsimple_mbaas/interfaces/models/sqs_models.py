@@ -38,7 +38,44 @@ class Record(BaseModel):
     eventSource: str
     eventSourceARN: str
     awsRegion: str
-
+    
+    @staticmethod
+    def sqs_record_to_dict(record):
+        """
+        Convierte un objeto SQSRecord de AWS Lambda Powertools a un diccionario
+        para validación con Pydantic.
+        """
+        # Extraer atributos con manejo de posibles excepciones
+        try:
+            attributes = {k: v for k, v in record.attributes.items()} if hasattr(record, 'attributes') else {}
+        except Exception:
+            attributes = {}
+    
+        try:
+            message_attributes = record.message_attributes if hasattr(record, 'message_attributes') else {}
+        except Exception:
+            message_attributes = {}
+    
+        # Crear diccionario con los campos necesarios
+        return {
+            "messageId": getattr(record, 'message_id', ''),
+            "receiptHandle": getattr(record, 'receipt_handle', ''),
+            "body": getattr(record, 'body', str(record)),
+            "attributes": attributes,
+            "messageAttributes": message_attributes,
+            "md5OfBody": getattr(record, 'md5_of_body', ''),
+            "eventSource": getattr(record, 'event_source', ''),
+            "eventSourceARN": getattr(record, 'event_source_arn', ''),
+            "awsRegion": getattr(record, 'aws_region', '')
+        }
+    
+    @classmethod
+    def from_powertools_record(cls, record):
+        """
+        Crea una instancia de Record a partir de un objeto SQSEvent de Powertools.
+        """
+        record_dict = cls.sqs_record_to_dict(record)
+        return cls.model_validate(record_dict)
 
 class SQSEvent(BaseModel):
     """Evento completo de SQS que contiene múltiples registros."""

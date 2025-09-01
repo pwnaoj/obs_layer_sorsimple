@@ -23,6 +23,7 @@ class BusinessRule:
             extensions: Datos de extensión opcionales
         """
         self.config = rule_config
+        self.desc = self.config['description']
         self.extensions = extensions
         self.conditions = rule_config.get('conditions', [])
         self.actions = rule_config.get('actions', [])
@@ -91,20 +92,28 @@ class BusinessRule:
         try:
             operator = condition['operator']
             field = condition['field']
-            value = condition.get('value')
-
+            expected_value = condition.get('value')
+            
+            # Usar JMESPath para obtener el valor del campo
+            actual_value = jmespath.search(field, event)
+            
+            # Definir operadores que funcionan con estructuras anidadas
             operators = {
-                'exists': lambda: field in event,
-                'matches_query': lambda: bool(jmespath.search(field, unflatten(event, '.'))),
-                'equals': lambda: event.get(field) == value,
-                'not_equals': lambda: event.get(field) != value,
-                'in': lambda: event.get(field) in value,
-                'contains': lambda: value in event.get(field, ""),
-                'greater_than': lambda: event.get(field, 0) > value,
-                'less_than': lambda: event.get(field, 0) < value
+                'exists': lambda: actual_value is not None,
+                'matches_query': lambda: bool(actual_value),
+                'equals': lambda: actual_value == expected_value,
+                'not_equals': lambda: actual_value != expected_value,
+                'in': lambda: actual_value in expected_value if expected_value else False,
+                'contains': lambda: expected_value in actual_value if actual_value else False,
+                'greater_than': lambda: actual_value > expected_value if actual_value is not None else False,
+                'less_than': lambda: actual_value < expected_value if actual_value is not None else False
             }
-
-            return operators.get(operator, lambda: True)()
+            
+            # Ejecutar el operador correspondiente
+            operation = operators.get(operator, lambda: True)
+            result = operation()
+            
+            return result
         except Exception as e:
             logger.error(f"Error al evaluar condición: {e}")
             return False
@@ -122,8 +131,10 @@ class BusinessRule:
         results = {}
         for action in self.actions:
             result = self._execute_action(action, event)
-            if result:
+            
+            if result:            
                 results.update(result)
+        
         return results
 
     def _execute_action(self, action: Dict, event: Dict) -> Optional[Dict]:
@@ -195,7 +206,7 @@ class RuleEngine:
         )
 
         # Aplicar reglas en orden
-        for rule in sorted_rules:
+        for rule in sorted_rules:            
             if rule.is_applicable(event, current_time):
                 rule_results = rule.apply(event)
                 results.update(rule_results)

@@ -7,6 +7,7 @@ from flatten_json import flatten, unflatten_list
 from typing import Any, Dict, List, Optional
 
 from obs_layer_sorsimple_mbaas.common.utils.log import logger
+from obs_layer_sorsimple_mbaas.infrastructure.repositories.entity_repository import EntityRepository
 
 
 class EntityBuilder:
@@ -47,11 +48,12 @@ class EntityBuilder:
         self._event = self._unflatten_json(event)
         return self
     
-    def with_session_data(self, repository):
+    def with_session_data(self, s3_config: Dict, repository: EntityRepository):
         """
         Extrae y establece los datos de sesión del evento.
         
         Args:
+            s3_config: Configuración de servicios desde S3.
             repository: Repositorio para buscar tidnid si no está en el evento
             
         Returns:
@@ -85,8 +87,13 @@ class EntityBuilder:
             # Si no está en el evento, buscarlo en el repositorio
             if not tidnid and repository:
                 try:
+                    # Extraer appConsumer.id del evento
+                    app_consumer_id = jmespath.search('jsonPayload.dataObject.consumer.appConsumer.id', self._event)
+                    # Extraer querys db para este appConsumer
+                    querys = jmespath.search(f"[?id=='{app_consumer_id}'].config.db.querys | [0]", s3_config)
+                    
                     date_str = datetime.now().strftime('%Y%m%d')
-                    tidnid = repository.find_tidnid(self.entity['session_id'], date_str)
+                    tidnid = repository.find_tidnid(self.entity['session_id'], querys, date_str)
                 except Exception as e:
                     logger.error(f"Error al buscar tidnid: {e}")
                     
@@ -166,7 +173,7 @@ class EntityBuilder:
         try:
             if rule_engine and self._event:
                 self.entity['data']['rules'] = rule_engine.process_event(self._event)
-            else:
+            else:                
                 self.entity['data']['rules'] = {}
                 
             return self

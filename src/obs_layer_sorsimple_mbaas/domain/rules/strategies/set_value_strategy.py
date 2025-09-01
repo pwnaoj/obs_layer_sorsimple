@@ -26,11 +26,12 @@ class SetValueStrategy(ActionStrategy):
             Diccionario con el valor establecido
         """
         try:
+            import jmespath
             # Obtener la clave de origen
             source_field = action['value']
             
             # Extraer el valor del evento
-            value = event.get(source_field)
+            value = event.get(source_field) or jmespath.search(source_field, event)
             
             # Solo retornar si se encontró un valor
             if value is not None:

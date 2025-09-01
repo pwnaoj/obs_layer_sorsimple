@@ -40,7 +40,7 @@ class RepositoryFactory:
             ConfigurationError: Si el tipo de repositorio no está registrado
         """
         # Importación tardía para evitar dependencias circulares
-        from obs_layer_sorsimple_mbaas.infrastructure.repositories.entity_repository import EntityRepository
+        from ...infrastructure.repositories.entity_repository import EntityRepository
         
         # Registrar repositorios por defecto si no existen
         if not cls._repositories:
