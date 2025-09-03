@@ -3,7 +3,7 @@
 import json
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 from obs_layer_sorsimple_mbaas.infrastructure.repositories.base_repository import BaseRepository
 from obs_layer_sorsimple_mbaas.common.utils.log import logger
@@ -61,32 +61,26 @@ class EntityRepository(BaseRepository):
                 date=date_str
             )
     
-    def find_tidnid(self, session_id: str, querys: Dict, date_str: Optional[str] = None) -> Optional[str]:
+    def find_tidnid(self, query: str, params: Tuple[Any, ...], session_id: str, date_str: str) -> Optional[str]:
         """
         Busca el tidnid asociado a una sesión.
-        
+
         Args:
-            session_id: ID de sesión
-            querys: Querys para consultas
-            date_str: Fecha en formato YYYYMMDD (por defecto, hoy)
-            
-        Returns:
-            El tidnid si se encuentra, o None
-            
+            query (str): Query de consulta.
+            params (Tuple[Any, ...]): Parámetros de consulta.
+            session_id (str): Identificador único del evento.
+            date_str (str): Fecha formateada.
+
         Raises:
-            RepositoryError: Si ocurre un error en la operación
+            ValueError: Si ocurre un error en la operación.
+
+        Returns:
+            Optional[str]: tidnid o None.
         """
-        if querys.get('find_tidnid') is None:
-            raise ValueError("No hay querys configurados para consultar tidnid en DB.")
-        
-        if date_str is None:
-            date_str = datetime.now().strftime('%Y%m%d')
-            
         try:
-            query = querys.get('find_tidnid')
             result = self.db_service.get_events(
                 sql=query,
-                params=(date_str, session_id)
+                params=params
             )
             
             return result[0] if result and len(result) > 0 else None
@@ -97,46 +91,31 @@ class EntityRepository(BaseRepository):
                 date=date_str
             )
     
-    def save(self, entity_name: str, session_id: str, tidnid: str, 
-             data: Union[Dict, List], querys: Dict, date_str: Optional[str] = None) -> bool:
+    def save(self, entity_name: str, session_id: str, query: str, params: Tuple[Any, ...] = None) -> bool:
         """
         Guarda los datos de una entidad.
         
         Args:
-            entity_name: Nombre de la entidad/tabla
-            session_id: ID de sesión
-            tidnid: Identificador del tipo y número de documento
-            data: Datos a guardar (serán convertidos a JSON)
-            querys: Querys para consultas
-            date_str: Fecha en formato YYYYMMDD (por defecto, hoy)
+            entity_name (str): Nombre de la entidad/tabla
+            session_id (str): Identificador de sesión.
+            query (str): Query para consulta
+            params (Tuple[Any, ...]): Tupla con valores a insertar.
             
         Returns:
             True si se guardó correctamente
             
         Raises:
             RepositoryError: Si ocurre un error en la operación
-        """
-        if querys.get('save') is None:
-            raise ValueError("No hay querys configurados para insertar data a DB.")
-        
-        if date_str is None:
-            date_str = datetime.now().strftime('%Y%m%d')
-            
-        try:
-            # Convertir data a string JSON
-            data_json = json.dumps(data, default=str)
-            
-            # Construir consulta
-            query = querys.get('save').format(entity_name=entity_name)
-            
+        """            
+        try:            
             # Ejecutar consulta
             self.db_service.save_events(
                 sql=query,
-                params=(session_id, tidnid, data_json, date_str)
+                params=params
             )
             
             logger.info(
-                f"Entidad guardada: entity_name={entity_name}, session_id={session_id}, date={date_str}"
+                f"Entidad guardada: entity_name={entity_name}, session_id={session_id}"
             )
             return True
             
@@ -144,7 +123,5 @@ class EntityRepository(BaseRepository):
             self._handle_error(
                 "save", e,
                 entity_name=entity_name,
-                session_id=session_id,
-                tidnid=tidnid,
-                date=date_str
+                session_id=session_id
             )

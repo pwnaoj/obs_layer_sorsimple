@@ -7,6 +7,7 @@ from flatten_json import flatten, unflatten_list
 from typing import Any, Dict, List, Optional
 
 from obs_layer_sorsimple_mbaas.common.utils.log import logger
+from obs_layer_sorsimple_mbaas.common.utils.sql import SQLBuilder
 from obs_layer_sorsimple_mbaas.infrastructure.repositories.entity_repository import EntityRepository
 
 
@@ -89,11 +90,34 @@ class EntityBuilder:
                 try:
                     # Extraer appConsumer.id del evento
                     app_consumer_id = jmespath.search('jsonPayload.dataObject.consumer.appConsumer.id', self._event)
-                    # Extraer querys db para este appConsumer
-                    querys = jmespath.search(f"[?id=='{app_consumer_id}'].config.db.querys | [0]", s3_config)
                     
+                    # Extraer idService
+                    id_service = jmespath.search('jsonPayload.dataObject.messages.idService', self._event)
+                    
+                    # Extraer entity_name
+                    entity_name = jmespath.search(f"[?id=='{app_consumer_id}'][].services[?id_service=='{id_service}'].entity[][] | [0]")
+                        
+                    # Extraer configuración base de datos para este appConsumer
+                    db_config = jmespath.search(f"[?id=='{app_consumer_id}'].config.db | [0]", s3_config)
+                    
+                    # Obtener fecha actual
                     date_str = datetime.now().strftime('%Y%m%d')
-                    tidnid = repository.find_tidnid(self.entity['session_id'], querys, date_str)
+                    
+                    # Crear sql builder
+                    sql_builder = SQLBuilder(
+                        db_config=db_config,
+                        context={
+                            'entity_name': entity_name,
+                            'date_str': date_str
+                        })
+
+                    # Obtener query y params configurados
+                    query, params = sql_builder.build_query_and_params(
+                        event_unflat=self._event,
+                        query_type='find_tidnid',
+                        entity=self.entity
+                    )
+                    tidnid = repository.find_tidnid(query, params, session_id, date_str)
                 except Exception as e:
                     logger.error(f"Error al buscar tidnid: {e}")
                     
