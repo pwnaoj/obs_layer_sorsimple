@@ -10,6 +10,7 @@ from obs_layer_sorsimple_mbaas.application.builders.entity_builder import Entity
 from obs_layer_sorsimple_mbaas.domain.rules.engine import RuleEngine
 from obs_layer_sorsimple_mbaas.domain.entities.entity import Entity
 from obs_layer_sorsimple_mbaas.common.utils.log import logger
+from obs_layer_sorsimple_mbaas.common.utils.sql import SQLBuilder
 from obs_layer_sorsimple_mbaas.infrastructure.repositories.entity_repository import EntityRepository
 
 
@@ -211,28 +212,41 @@ class EventProcessor:
             # Extraer appConsumer.id del evento
             app_consumer_id = jmespath.search('jsonPayload.dataObject.consumer.appConsumer.id', event_unflat)
             
-            # Extraer querys db para este appConsumer
-            querys = jmespath.search(f"[?id=='{app_consumer_id}'].config.db.querys | [0]", self.s3_config)
+            # Extraer idService del evento
+            id_service = jmespath.search('jsonPayload.dataObject.messages.idService', event_unflat)
             
+            # Extraer configuración base de datos para este appConsumer
+            db_config = jmespath.search(f"[?id=='{app_consumer_id}'].config.db | [0]", self.s3_config)
+                            
             # Obtener fecha actual
             date_str = datetime.now().strftime('%Y%m%d')
             
             # Guardar la entidad en cada tabla correspondiente
             for entity_name in entity.entity_names:
-                # Obtener eventos actuales
-                # current_events = repository.find(entity_name, entity.session_id, date_str)
-                
-                # Agregar nuevo evento
-                # current_events.append(entity.data)
+                # Crear sql builder
+                sql_builder = SQLBuilder(
+                    db_config=db_config,
+                    context={
+                        'entity_name': entity_name,
+                        'date_str': date_str,
+                        'app_consumer_id': app_consumer_id,
+                        'id_service': id_service,
+                        'obs_config': self.s3_config
+                    })
+            
+                # Obtener query y params configurados
+                query, params = sql_builder.build_query_and_params(
+                    event_unflat=event_unflat,
+                    query_type='save',
+                    entity=entity
+                )
                 
                 # Guardar eventos actualizados
                 success = repository.save(
                     entity_name,
                     entity.session_id,
-                    entity.tidnid,
-                    entity.data,
-                    querys,
-                    date_str
+                    query,
+                    params
                 )
                 
                 if not success:
