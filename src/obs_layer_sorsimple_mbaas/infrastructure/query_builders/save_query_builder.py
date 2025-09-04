@@ -47,26 +47,56 @@ class SaveQueryBuilder(QueryBuilder):
                                     params_config: Dict,
                                     context: ParameterContext) -> str:
         """
-        Formateo simple para el caso donde todos los placeholders son tipo 'parameter'.
-        Reemplaza {0}, {1}, etc. con los nombres de los placeholders configurados.
+        Formatea query manejando correctamente placeholders estructurales y parámetros.
         """
         try:
-            # Crear lista ordenada de nombres de placeholders
-            replacements = []
-        
+            # Crear mapeo de índice -> valor/placeholder
+            placeholder_map = {}
+            
+            # Procesar cada parámetro según su tipo (igual que FindQueryBuilder)
+            for param_idx, param_config in params_config.items():
+                placeholder_name = param_config.get('placeholder', '')
+                param_type = param_config.get('type', 'parameter')
+                
+                if param_type == 'structural':
+                    # CORRECCIÓN: Resolver valor del contexto para estructurales
+                    resolved_value = self._resolve_structural_value(placeholder_name, context)
+                    placeholder_map[param_idx] = resolved_value
+                    logger.debug(f"Estructural [{param_idx}]: {placeholder_name} -> {resolved_value}")
+                else:
+                    # Para parameters: usar nombre del placeholder
+                    placeholder_map[param_idx] = placeholder_name
+                    logger.debug(f"Parámetro [{param_idx}]: manteniendo placeholder {placeholder_name}")
+            
+            # Crear lista ordenada de reemplazos
+            ordered_replacements = []
             for i in range(len(params_config)):
-                param_config = params_config.get(str(i), {})
-                placeholder_name = param_config.get('placeholder', f'param_{i}')
-                replacements.append(placeholder_name)
-        
-            # Formatear el template con los nombres reales
-            formatted_query = query_template.format(*replacements)
-        
+                replacement = placeholder_map.get(str(i), f'placeholder_{i}')
+                ordered_replacements.append(replacement)
+            
+            # Formatear el template
+            formatted_query = query_template.format(*ordered_replacements)
+            logger.debug(f"Query formateado: {formatted_query}")
+            
             return formatted_query
-        
+            
         except Exception as e:
-            logger.error(f"Error simple formateando query: {e}")
+            logger.error(f"Error formateando query: {e}")
             return query_template
+    
+    def _resolve_structural_value(self, placeholder_name: str, context: ParameterContext) -> str:
+        """
+        Resuelve valores para placeholders estructurales usando el contexto.
+        """
+        if placeholder_name == 'entity_names':
+            return context.get_entity_name() or 'default_entity'
+        elif placeholder_name == 'table_name':
+            return context.get_context_value('table_name', 'default_table')
+        elif placeholder_name == 'schema_name':
+            return context.get_context_value('schema_name', 'public')
+        else:
+            logger.warning(f"Resolver no definido para placeholder estructural: {placeholder_name}")
+            return placeholder_name
     
     def _format_query_placeholders(self, query_template: str, context: ParameterContext) -> str:
         """
