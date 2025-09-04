@@ -34,25 +34,31 @@ class StrategyFactory:
             
         Returns:
             Instancia de la estrategia creada o None si no se encuentra
-            
-        Raises:
-            ConfigurationError: Si el tipo de estrategia no está registrado
         """
-        # Importación tardía para evitar dependencias circulares
-        # from obs_layer_sorsimple_mbaas.domain.rules.strategies.time_calculation_strategy import TimeCalculationStrategy
+        # Importaciones tardías para evitar dependencias circulares
         from obs_layer_sorsimple_mbaas.domain.rules.strategies.value_extraction_strategy import ValueExtractionStrategy
         from obs_layer_sorsimple_mbaas.domain.rules.strategies.set_value_strategy import SetValueStrategy
         from obs_layer_sorsimple_mbaas.domain.rules.strategies.set_fixed_value_strategy import SetFixedValueStrategy
-        # from obs_layer_sorsimple_mbaas.domain.rules.strategies.sum_numeric_string_strategy import SumNumericStringStrategy
+        
+        # Importar nuevas strategies para parámetros SQL
+        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.datetime_parameter_strategy import DateTimeParameterStrategy
+        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.event_field_parameter_strategy import EventFieldParameterStrategy
+        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.entity_data_parameter_strategy import EntityDataParameterStrategy
+        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.context_value_parameter_strategy import ContextValueParameterStrategy
         
         # Registrar estrategias por defecto si no existen
         if not cls._strategies:
             cls._strategies = {
-                # 'time_difference': TimeCalculationStrategy,
+                # Strategies originales para BusinessRule
                 'extract_value': ValueExtractionStrategy,
                 'set_value': SetValueStrategy,
                 'set_fixed_value': SetFixedValueStrategy,
-                # 'sum_numeric_string': SumNumericStringStrategy
+                
+                # Nuevas strategies para parámetros SQL
+                'datetime.now': DateTimeParameterStrategy,
+                'event': EventFieldParameterStrategy,
+                'entity': EntityDataParameterStrategy,
+                'context': ContextValueParameterStrategy,
             }
             
         # Normalizar el tipo de acción
@@ -70,3 +76,26 @@ class StrategyFactory:
             error_msg = f"Error al crear estrategia {action_type}: {e}"
             logger.error(error_msg)
             raise ConfigurationError(error_msg, {"original_error": str(e)})
+    
+    @classmethod
+    def get_registered_strategies(cls) -> Dict[str, Type]:
+        """
+        Retorna todas las strategies registradas.
+        
+        Returns:
+            Diccionario con tipos de acción y sus clases
+        """
+        return cls._strategies.copy()
+    
+    @classmethod
+    def is_strategy_registered(cls, action_type: str) -> bool:
+        """
+        Verifica si una strategy está registrada.
+        
+        Args:
+            action_type: Tipo de acción a verificar
+            
+        Returns:
+            True si está registrada, False caso contrario
+        """
+        return action_type.lower() in cls._strategies
