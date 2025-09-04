@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from obs_layer_sorsimple_mbaas.common.utils.log import logger
 from obs_layer_sorsimple_mbaas.common.utils.sql import SQLBuilder
 from obs_layer_sorsimple_mbaas.infrastructure.repositories.entity_repository import EntityRepository
+from obs_layer_sorsimple_mbaas.application.services.sql_query_services import SQLQueryService
+from obs_layer_sorsimple_mbaas.common.value_objects.parameter_context import ParameterContext
 
 
 class EntityBuilder:
@@ -67,62 +69,37 @@ class EntityBuilder:
             raise ValueError("Debe establecer el evento primero con with_event()")
             
         try:
-            # Extraer session_id
-            session_id = jmespath.search(
-                'jsonPayload.dataObject.consumer.appConsumer.sessionId', 
-                self._event
+            # Crear contexto
+            context = ParameterContext(
+                event=self._event,
+                s3_config=s3_config,
+                entity=self.entity
             )
             
-            if not session_id:
-                raise ValueError("No se encontró session_id en el evento")
+            # Obtener configuración DB
+            db_config = context.get_db_config()
+            if not db_config:
+                logger.warning("No se encontró configuración DB")
+                return self
+            
+            # Buscar tidnid
+            if repository:
+                sql_service = SQLQueryService(db_config)
+                query, params = sql_service.build_query_and_params('find_tidnid', context)
                 
-            self.entity['session_id'] = session_id.strip()
-            
-            # Extraer tidnid del evento
-            tidnid = jmespath.search(
-                "(jsonPayload.dataObject.documento || jsonPayload.dataObject.client.documentClient) | " +
-                "join('-', [tipo || type, numero || number])", 
-                self._event
-            )
-            
-            # Si no está en el evento, buscarlo en el repositorio
-            if not tidnid and repository:
-                try:
-                    # Extraer appConsumer.id del evento
-                    app_consumer_id = jmespath.search('jsonPayload.dataObject.consumer.appConsumer.id', self._event)
-                    
-                    # Extraer idService
-                    id_service = jmespath.search('jsonPayload.dataObject.messages.idService', self._event)
-                    
-                    # Extraer entity_name
-                    entity_name = jmespath.search(f"[?id=='{app_consumer_id}'][].services[?id_service=='{id_service}'].entity[][] | [0]")
-                        
-                    # Extraer configuración base de datos para este appConsumer
-                    db_config = jmespath.search(f"[?id=='{app_consumer_id}'].config.db | [0]", s3_config)
-                    
-                    # Obtener fecha actual
-                    date_str = datetime.now().strftime('%Y%m%d')
-                    
-                    # Crear sql builder
-                    sql_builder = SQLBuilder(
-                        db_config=db_config,
-                        context={
-                            'entity_name': entity_name,
-                            'date_str': date_str
-                        })
-
-                    # Obtener query y params configurados
-                    query, params = sql_builder.build_query_and_params(
-                        event_unflat=self._event,
-                        query_type='find_tidnid',
-                        entity=self.entity
-                    )
+                session_id = context.get_session_id()
+                date_str = context.get_date_str()
+                tidnid = context.get_tidnid()
+                
+                if not tidnid:
+                    logger.info("Buscando tidnid desde DB.")
                     tidnid = repository.find_tidnid(query, params, session_id, date_str)
-                except Exception as e:
-                    logger.error(f"Error al buscar tidnid: {e}")
-                    
-            self.entity['tidnid'] = tidnid
+                
+                self.entity['session_id'] = session_id
+                self.entity['tidnid'] = tidnid
+            
             return self
+            
         except Exception as e:
             logger.error(f"Error al extraer datos de sesión: {e}")
             raise ValueError(f"Error al extraer datos de sesión: {e}")

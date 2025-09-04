@@ -44,4 +44,4 @@ def setup_logger(log_level: Optional[str] = None) -> logging.Logger:
 
 
 # Crear logger global
-logger = setup_logger()
+logger = setup_logger('DEBUG')

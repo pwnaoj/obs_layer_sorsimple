@@ -33,7 +33,7 @@ class SaveQueryBuilder(QueryBuilder):
             params_config = query_config.get('params', {})
             
             # Formatear consulta con placeholders de contexto
-            formatted_query = self._format_query_placeholders(query_template, context)
+            formatted_query = self._format_query_from_params_config(query_template, params_config, context)
             
             # Extraer parámetros usando strategies
             parameters = self.param_service.extract_parameters(params_config, context)
@@ -42,6 +42,31 @@ class SaveQueryBuilder(QueryBuilder):
         except Exception as e:
             logger.error(f"Error construyendo query save: {e}")
             return "", ()
+    
+    def _format_query_from_params_config(self, query_template: str,
+                                    params_config: Dict,
+                                    context: ParameterContext) -> str:
+        """
+        Formateo simple para el caso donde todos los placeholders son tipo 'parameter'.
+        Reemplaza {0}, {1}, etc. con los nombres de los placeholders configurados.
+        """
+        try:
+            # Crear lista ordenada de nombres de placeholders
+            replacements = []
+        
+            for i in range(len(params_config)):
+                param_config = params_config.get(str(i), {})
+                placeholder_name = param_config.get('placeholder', f'param_{i}')
+                replacements.append(placeholder_name)
+        
+            # Formatear el template con los nombres reales
+            formatted_query = query_template.format(*replacements)
+        
+            return formatted_query
+        
+        except Exception as e:
+            logger.error(f"Error simple formateando query: {e}")
+            return query_template
     
     def _format_query_placeholders(self, query_template: str, context: ParameterContext) -> str:
         """
