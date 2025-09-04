@@ -1,6 +1,7 @@
 """application/services/parameter_extraction_service.py"""
 
 from typing import Dict, Tuple, Any
+
 from obs_layer_sorsimple_mbaas.common.factories.strategy_factory import StrategyFactory
 from obs_layer_sorsimple_mbaas.common.value_objects.parameter_context import ParameterContext
 from obs_layer_sorsimple_mbaas.common.utils.log import logger
@@ -12,21 +13,10 @@ class ParameterExtractionService:
     """
     
     def __init__(self):
+        """
+        Inicializa el servicio. StrategyFactory maneja todos los registros automáticamente.
+        """
         self.strategy_factory = StrategyFactory()
-        self._register_sql_strategies()
-    
-    def _register_sql_strategies(self):
-        """Registra las strategies específicas para parámetros SQL."""
-        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.datetime_parameter_strategy import DateTimeParameterStrategy
-        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.event_field_parameter_strategy import EventFieldParameterStrategy
-        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.entity_data_parameter_strategy import EntityDataParameterStrategy
-        from obs_layer_sorsimple_mbaas.domain.rules.strategies.sql_parameters.context_value_parameter_strategy import ContextValueParameterStrategy
-        
-        # Registrar strategies SQL si no existen
-        StrategyFactory.register('datetime.now', DateTimeParameterStrategy)
-        StrategyFactory.register('event', EventFieldParameterStrategy)
-        StrategyFactory.register('entity', EntityDataParameterStrategy)
-        StrategyFactory.register('context', ContextValueParameterStrategy)
     
     def extract_parameters(self, params_config: Dict, context: ParameterContext) -> Tuple[Any, ...]:
         """
@@ -43,16 +33,25 @@ class ParameterExtractionService:
         
         # Procesar cada parámetro configurado
         for param_idx, param_config in params_config.items():
+            param_type = param_config.get('type', 'parameter')
+            
+            if param_type == 'structural':
+                logger.debug(f"Saltando parámetro estructural en índice {param_idx}")
+                continue
+            
             try:
                 value = self._extract_single_parameter(param_config, context)
-                if value is not None:
-                    extracted_values[param_idx] = value
+                extracted_values[param_idx] = value
+                logger.debug(f"Parámetro {param_idx} extraído: {value}")
             except Exception as e:
                 logger.error(f"Error extrayendo parámetro {param_idx}: {e}")
-                continue
+                extracted_values[param_idx] = None
         
         # Ordenar parámetros según índice numérico
-        return self._order_parameters(extracted_values)
+        ordered_params = self._order_parameters(extracted_values)
+        logger.debug(f"Parámetros finales ordenados: {ordered_params}")
+        
+        return ordered_params
     
     def _extract_single_parameter(self, param_config: Dict, context: ParameterContext) -> Any:
         """
@@ -68,6 +67,8 @@ class ParameterExtractionService:
         requires = param_config.get('requires', '')
         placeholder = param_config.get('placeholder', '')
         
+        logger.debug(f"Extrayendo parámetro - requires: {requires}, placeholder: {placeholder}")
+        
         # Crear strategy para el tipo de extracción
         strategy = self.strategy_factory.create_strategy(requires)
         if not strategy:
@@ -77,14 +78,18 @@ class ParameterExtractionService:
         # Preparar extensiones para la strategy
         extensions = {
             'entity': context.entity,
-            'custom_context': context.custom_context
+            'custom_context': context.custom_context,
+            'full_context': context
         }
         
         # Ejecutar extracción
         result = strategy.execute(param_config, context.event, placeholder, extensions)
         
         # Retornar el valor extraído
-        return result.get(placeholder) if result else None
+        extracted_value = result.get(placeholder) if result else None
+        logger.debug(f"Valor extraído para {placeholder}: {extracted_value}")
+        
+        return extracted_value
     
     def _order_parameters(self, extracted_values: Dict) -> Tuple[Any, ...]:
         """
@@ -98,14 +103,19 @@ class ParameterExtractionService:
         """
         ordered_params = []
         
-        # Ordenar por índice numérico
-        for i in range(len(extracted_values)):
-            value = extracted_values.get(str(i))
-            if value is not None:
+        # Obtener todos los índices dsponibles y ordenarlos
+        available_indices = sorted([int(k) for k in extracted_values.keys()])
+        
+        # Ordenar por índice numérico (0, 1, 2, ...)
+        for index in available_indices:
+            value = extracted_values.get(str(index))
+            
+            if value is not None and isinstance(value, (dict, list)):
                 # Convertir dict/list a JSON string para SQL
-                if isinstance(value, (dict, list)):
-                    import json
-                    value = json.dumps(value)
-                ordered_params.append(value)
+                import json
+                value = json.dumps(value)
+            
+            # Incluir el valor (puede ser None)
+            ordered_params.append(value)
         
         return tuple(ordered_params)

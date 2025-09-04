@@ -14,14 +14,21 @@ class ContextValueParameterStrategy(ActionStrategy):
         try:
             context_key = action.get('value', '')
             if not context_key:
-                return {}
-                
+                return {field: None}
+            
+            full_context = extensions.get('full_context') if extensions else None
+            
+            if context_key == 'entity_name' and full_context:
+                entity_name = full_context.get_entity_name()
+                logger.debug(f"Entity name del contexto: {entity_name}")
+                return {field: entity_name}
+            
             # Buscar en el contexto personalizado
             custom_context = extensions.get('custom_context', {}) if extensions else {}
             value = custom_context.get(context_key)
             
-            return {field: value} if value is not None else {}
+            return {field: value}
         except Exception as e:
             logger.error(f"Error en ContextValueParameterStrategy: {e}")
-            return {}
+            return {field: None}
         
