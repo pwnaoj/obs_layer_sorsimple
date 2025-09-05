@@ -52,12 +52,12 @@ class SaveQueryBuilder(QueryBuilder):
         try:
             # Crear mapeo de índice -> valor/placeholder
             placeholder_map = {}
-            
+        
             # Procesar cada parámetro según su tipo (igual que FindQueryBuilder)
             for param_idx, param_config in params_config.items():
                 placeholder_name = param_config.get('placeholder', '')
                 param_type = param_config.get('type', 'parameter')
-                
+            
                 if param_type == 'structural':
                     # CORRECCIÓN: Resolver valor del contexto para estructurales
                     resolved_value = self._resolve_structural_value(placeholder_name, context)
@@ -67,19 +67,19 @@ class SaveQueryBuilder(QueryBuilder):
                     # Para parameters: usar nombre del placeholder
                     placeholder_map[param_idx] = placeholder_name
                     logger.debug(f"Parámetro [{param_idx}]: manteniendo placeholder {placeholder_name}")
-            
+        
             # Crear lista ordenada de reemplazos
             ordered_replacements = []
             for i in range(len(params_config)):
                 replacement = placeholder_map.get(str(i), f'placeholder_{i}')
                 ordered_replacements.append(replacement)
-            
+        
             # Formatear el template
             formatted_query = query_template.format(*ordered_replacements)
             logger.debug(f"Query formateado: {formatted_query}")
-            
+        
             return formatted_query
-            
+        
         except Exception as e:
             logger.error(f"Error formateando query: {e}")
             return query_template
